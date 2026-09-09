@@ -2,7 +2,7 @@ beautifulsoup4==4.15.0
 boolean.py==5.0
 build==1.6.0
 CacheControl==0.14.4
-certifi==2026.7.22
+#certifi==2026.7.22
 charset-normalizer==3.5.1
 cyclonedx-python-lib==11.12.0
 defusedxml==0.7.1
@@ -29,7 +29,7 @@ py-serializable==2.1.0
 Pygments==2.21.0
 pyparsing==3.3.2
 pyproject_hooks==1.2.0
-requests==2.34.2
+# requests==2.34.2     <- versión actual segura (comentada para prueba)
 rich==15.0.0
 sortedcontainers==2.4.0
 soupsieve==2.9.2
@@ -37,7 +37,9 @@ tomli==2.4.1
 tomli_w==1.2.0
 truststore==0.10.4
 typing_extensions==4.16.0
-urllib3==2.7.0
-# requests==2.6.0
-# urllib3==1.24.1
-# certifi==2017.7.27.1
+# urllib3==2.7.0      <- versión actual segura (comentada para prueba)
+
+# Versiones obsoletas para demostración de vulnerabilidades (compatibles con Python 3.13)
+requests==2.31.0     # GHSA-j8r2-6x86-q33q
+urllib3==2.0.6       # GHSA-v845-jxx5-vc9f
+certifi==2023.5.7    # PYSEC-2023-135
