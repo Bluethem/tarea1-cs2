@@ -1,37 +1,27 @@
-# Trabajo 1 - Construccion de Software 2
+# Trabajo 1 — Construcción de Software II
 
-Integrantes:
+**Integrantes:**
 - David Luza Ccorimanya
 - Henry Javier Medina Malpartida
 
-
-Aplicación Python para analizar páginas web: extrae el título, cuenta palabras y caracteres, y registra la fecha/hora del análisis.
+Aplicación Python que recibe la URL de una página web y devuelve el título, la cantidad de palabras, la cantidad de caracteres y la fecha/hora del análisis.
 
 ## Requisitos
 
 - Python 3.10+
 - pip
 
+## Configuración
 
-### 1. Crear el entorno virtual
-
-**Windows:**
-```bash
+```bat
 python -m venv .venv
-.venv\Scripts\activate
-```
-
-### 2. Instalar dependencias
-
-```bash
+.venv\Scripts\activate.bat
 pip install -r requirements.txt
 ```
 
----
-
 ## Uso
 
-```bash
+```bat
 python app.py
 ```
 
@@ -39,200 +29,298 @@ python app.py
 
 ## LAB-1: Construcción segura de una aplicación Python con pip
 
+Este documento registra la construcción de la aplicación *Security News Analyzer* y el análisis completo de su cadena de dependencias: cómo se instalan, cómo se relacionan entre sí (directas frente a transitivas), qué vulnerabilidades conocidas presentan y cómo se remedian.
+
 ---
 
-### Parte V — Árbol de dependencias
+### 1. Caso de estudio
 
-Se instala `pipdeptree` para visualizar las dependencias directas y transitivas:
+*Security News Analyzer* recibe la URL de una noticia y devuelve el título de la página, la cantidad de palabras y caracteres, y la fecha/hora del análisis. Para ello se apoya en dos dependencias externas:
 
-```bash
-pip install pipdeptree
+- `requests` — descarga el contenido de la URL.
+- `beautifulsoup4` — parsea el HTML y extrae el texto.
+
+La idea central del laboratorio aparece desde el inicio: el desarrollador instala `requests` y `beautifulsoup4`, pero esas librerías **necesitan otras librerías para funcionar**. Esas librerías adicionales son las *dependencias transitivas*, y son las que concentran la mayor parte del riesgo de seguridad.
+
+### Código de la aplicación (`app.py`)
+
+```python
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime
+
+
+def analyze_url(url):
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    title = soup.title.string if soup.title else "Sin título"
+
+    text = soup.get_text(separator=" ", strip=True)
+    words = text.split()
+
+    return {
+        "url": url,
+        "title": title,
+        "characters": len(text),
+        "words": len(words),
+        "analyzed_at": datetime.now(),
+    }
+
+
+def main():
+    print("=== Security News Analyzer ===")
+    url = input("Ingrese una URL: ")
+
+    try:
+        result = analyze_url(url)
+        print("\nResultado")
+        print("-" * 40)
+        print(f"Título: {result['title']}")
+        print(f"Caracteres: {result['characters']}")
+        print(f"Palabras: {result['words']}")
+        print(f"Fecha: {result['analyzed_at']}")
+    except requests.exceptions.RequestException as error:
+        print(f"Error al acceder a la URL: {error}")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+### 2. Preparación del entorno virtual
+
+Se crea el entorno virtual dentro del proyecto y se activa antes de instalar nada, de modo que las dependencias queden aisladas y no contaminen la instalación global de Python.
+
+```bat
+cd tarea1-cs2
+python -m venv .venv
+.venv\Scripts\activate.bat
+```
+
+![Creación y activación del entorno virtual en CMD de VS Code](<assets/creación del entorno venv.png>)
+
+Con el prefijo `(.venv)` en el prompt se confirma que el entorno está activo y que las siguientes instalaciones se harán dentro de él.
+
+---
+
+### 3. Instalación de dependencias
+
+Las dependencias se instalan a partir del archivo `requirements.txt`:
+
+```bat
+pip install -r requirements.txt
+```
+
+`pip` va resolviendo el árbol completo: además de las librerías que se pidieron explícitamente, descarga todo lo que estas necesitan para funcionar.
+
+![pip install — recolección de paquetes, primera parte (beautifulsoup4 hasta msgpack)](<assets/installacion de requirements.png>)
+
+![pip install — recolección de paquetes, segunda parte (nab-* hasta pipdeptree)](<assets/installacion de requirements 2.png>)
+
+![pip install — recolección de paquetes, tercera parte (requests, rich, urllib3, colorama)](<assets/installacion de requirements 3.png>)
+
+![pip install — descarga de wheels desde caché local](<assets/installacion de requirements 4.png>)
+
+![pip install — instalación completada con lista completa de paquetes](<assets/installacion de requirements 5.png>)
+
+En la última evidencia se observa el `Successfully installed ...` con todos los paquetes instalados, notablemente más que las dependencias pedidas de forma directa.
+
+---
+
+### 4. Dependencias directas y transitivas
+
+Con el entorno ya poblado se lista todo lo instalado:
+
+```bat
+pip list
+```
+
+![Salida de pip list con todos los paquetes del entorno virtual](<assets/pip list.png>)
+
+Aquí se hace visible la distinción clave del laboratorio:
+
+- **Dependencia directa:** la que el proyecto solicita explícitamente (`requests`, `beautifulsoup4`).
+- **Dependencia transitiva:** la que es requerida por otra dependencia y que el proyecto nunca pidió de forma directa (por ejemplo `urllib3`, `certifi`, `idna`, `charset-normalizer`, `soupsieve`).
+
+Por eso `pip list` —y también `pip freeze`— muestran más paquetes de los que aparecen en los `import` del código.
+
+---
+
+### 5. Árbol de dependencias con pipdeptree
+
+Para visualizar la relación jerárquica entre paquetes se usa `pipdeptree`:
+
+```bat
 pipdeptree
 ```
 
-Salida obtenida:
+![Árbol de dependencias — primera parte: beautifulsoup4, pip_audit y requests con sus transitivas](<assets/pipdeptree.png>)
 
-```
-beautifulsoup4==4.15.0
-  - soupsieve [required: >1.2, installed: 2.9.2]
+![Árbol de dependencias — segunda parte: nab-project, nab-index y continuación del árbol completo](<assets/pipdeptree 2.png>)
 
-requests==2.34.2
-  - certifi [required: >=2017.4.17, installed: 2026.7.22]
-  - charset-normalizer [required: >=2,<4, installed: 3.5.1]
-  - idna [required: >=2.5,<4, installed: 3.19]
-  - urllib3 [required: >=1.21.1,<3, installed: 2.7.0]
-```
-
-Árbol visual del proyecto:
-
-```
-              PROYECTO (app.py)
-                     │
-        ┌────────────┴────────────┐
-        ▼                         ▼
-    requests                beautifulsoup4
-    (2.34.2)                  (4.15.0)
-        │                         │
-  ┌─────┼──────────┐              ▼
-  ▼     ▼          ▼           soupsieve
-urllib3 idna    certifi          (2.9.2)
-(2.7.0)(3.19) (2026.7.22)
-  │
-  ▼
-charset-normalizer
-   (3.5.1)
-```
+El árbol muestra con claridad que `requests` cuelga de sus transitivas `certifi`, `charset-normalizer`, `idna` y `urllib3`, y que cada una llega con un rango de versión requerido (`required`) y una versión efectivamente instalada (`installed`). Esa diferencia entre "lo requerido" y "lo instalado" es exactamente lo que permite que una transitiva se quede en una versión vulnerable aunque siga siendo *compatible*.
 
 **Dependencias directas** (instaladas explícitamente):
-1. `requests==2.34.2`
-2. `beautifulsoup4==4.15.0`
+
+| Paquete         | Versión  |
+|-----------------|----------|
+| `requests`      | 2.34.2   |
+| `beautifulsoup4`| 4.15.0   |
 
 **Dependencias transitivas** (instaladas automáticamente):
 
-| Dependencia         | Requerida por     |
-|---------------------|-------------------|
-| `urllib3`           | requests          |
-| `certifi`           | requests          |
-| `charset-normalizer`| requests          |
-| `idna`              | requests          |
-| `soupsieve`         | beautifulsoup4    |
+| Dependencia          | Requerida por      |
+|----------------------|--------------------|
+| `urllib3`            | requests           |
+| `certifi`            | requests           |
+| `charset-normalizer` | requests           |
+| `idna`               | requests           |
+| `soupsieve`          | beautifulsoup4     |
 
 ---
 
-### Parte VI — Detección de vulnerabilidades
+### 6. Detección de vulnerabilidades con pip-audit
 
-Se instala `pip-audit` para realizar el análisis de composición de software (SCA):
+Se aplica *Software Composition Analysis* (SCA) sobre las dependencias instaladas. Para demostrar el funcionamiento de `pip-audit`, se instalaron versiones antiguas con CVEs conocidos compatibles con Python 3.13:
 
-```bash
-pip install pip-audit
+```bat
+pip install --force-reinstall requests==2.31.0 urllib3==2.0.6 certifi==2023.5.7
 pip-audit
 ```
 
-**Escenario simulado con dependencias vulnerables**
+![pip-audit — 15 vulnerabilidades conocidas en 3 paquetes: certifi, requests y urllib3](<assets/pip-audit part1.png>)
 
-Para demostrar el funcionamiento de `pip-audit`, se instalaron versiones antiguas con CVEs conocidas (ver bloque comentado al final de `requirements.txt`):
+El análisis reporta **15 vulnerabilidades conocidas en 3 paquetes**:
 
-```
-# Para reproducir el escenario vulnerable:
-# 1. Comentar: requests==2.34.2, urllib3==2.7.0, certifi==2026.7.22
-# 2. Descomentar: requests==2.6.0, urllib3==1.24.1, certifi==2017.7.27.1
-# 3. Ejecutar: pip install -r requirements.txt
-# 4. Ejecutar: pip-audit
-```
+| Paquete   | Versión   | Advisory           | Versión corregida |
+|-----------|-----------|--------------------|-------------------|
+| certifi   | 2023.5.7  | PYSEC-2023-135     | 2023.7.22         |
+| certifi   | 2023.5.7  | PYSEC-2024-230     | 2024.7.4          |
+| requests  | 2.31.0    | PYSEC-2026-1873    | 2.32.0            |
+| requests  | 2.31.0    | PYSEC-2026-1872    | 2.32.4            |
+| requests  | 2.31.0    | PYSEC-2026-2275    | 2.33.0            |
+| urllib3   | 2.0.6     | PYSEC-2023-212     | 1.26.18 / 2.0.7   |
+| urllib3   | 2.0.6     | PYSEC-2026-141     | 2.7.0             |
+| urllib3   | 2.0.6     | PYSEC-2026-1999    | 2.5.0             |
+| urllib3   | 2.0.6     | PYSEC-2026-1998    | 2.6.0             |
+| urllib3   | 2.0.6     | PYSEC-2026-1995    | 1.26.19 / 2.2.2   |
+| urllib3   | 2.0.6     | PYSEC-2026-1994    | 2.6.0             |
+| urllib3   | 2.0.6     | PYSEC-2026-1996    | 2.6.3             |
 
-Salida de `pip-audit` con dependencias vulnerables instaladas:
-
-```
-Found 4 known vulnerabilities in 3 packages
-Name      Version      ID                  Fix Versions
---------  -----------  ------------------  ------------
-requests  2.6.0        PYSEC-2023-74       2.31.0
-urllib3   1.24.1       PYSEC-2019-78       1.24.2
-urllib3   1.24.1       PYSEC-2019-79       1.24.2
-certifi   2017.7.27.1  PYSEC-2023-135      2023.7.22
-```
-
-| Paquete   | Versión     | CVE / ID          | Descripción                                      | Versión corregida |
-|-----------|-------------|-------------------|--------------------------------------------------|-------------------|
-| requests  | 2.6.0       | PYSEC-2023-74     | Filtrado de cabecera `Proxy-Authorization` en redirects | 2.31.0      |
-| urllib3   | 1.24.1      | PYSEC-2019-78     | Inyección CRLF en cabeceras HTTP                 | 1.24.2            |
-| urllib3   | 1.24.1      | PYSEC-2019-79     | Verificación incorrecta de certificados          | 1.24.2            |
-| certifi   | 2017.7.27.1 | PYSEC-2023-135    | Inclusión de CA raíz revocada (e-Tugra)          | 2023.7.22         |
-
-**Con versiones actuales** (estado real del proyecto):
-
-```
-No known vulnerabilities found
-```
+> De los tres paquetes afectados, `requests` es **directo**, mientras que `certifi` y `urllib3` son **transitivos**. El grueso del riesgo se concentra en `urllib3`, un paquete que la aplicación jamás importó de forma directa.
 
 ---
 
-### Parte VII — ¿Dónde está la vulnerabilidad?
+### 7. ¿Dónde está la vulnerabilidad?
 
-El desarrollador afirma que `requests` es la única dependencia directa afectada, pero el análisis revela que la cadena completa está comprometida:
+La aplicación no usa `urllib3` directamente, pero **sí está afectada** por sus vulnerabilidades, porque `requests` depende de él:
 
 ```
-app.py
-  │
-  ▼
-requests (2.6.0)  ← vulnerable (PYSEC-2023-74)
-  │
-  ▼
-urllib3 (1.24.1)  ← vulnerable (PYSEC-2019-78, PYSEC-2019-79)
+Security News Analyzer
+        │
+        ▼
+     requests        (dependencia directa)
+        │
+        ▼
+     urllib3         (dependencia transitiva)
+        │
+        ▼
+  vulnerabilidad
 ```
 
-La aplicación **no importa `urllib3` directamente**, pero está afectada porque `requests` lo utiliza internamente para realizar las conexiones HTTP. Una vulnerabilidad en `urllib3` puede explotarse a través de cualquier llamada a `requests.get()`.
-
-**¿Quién es responsable de solucionarlo?**
-
-El equipo que mantiene la aplicación. Aunque la vulnerabilidad esté en una dependencia transitiva, la responsabilidad de identificarla, evaluar su impacto y actualizar la cadena es del propietario de la aplicación.
+**¿Quién es responsable de solucionarla?** El equipo que mantiene la aplicación. Aunque la vulnerabilidad viva en una dependencia transitiva, es responsabilidad del proyecto identificarla, evaluar su impacto y actualizar la versión afectada.
 
 ---
 
-### Parte VIII — Actualizar dependencias
+### 8. Actualización de dependencias
 
-```bash
+Primero se consulta qué paquetes tienen versiones más nuevas disponibles:
+
+```bat
 pip list --outdated
 ```
 
-```bash
-pip install --upgrade requests urllib3 certifi
-pip freeze > requirements.txt
+![pip list --outdated — muestra requests 2.31.0→2.34.2 y urllib3 2.0.6→2.7.0 como desactualizados](<assets/pip list --outdated.png>)
+
+Se actualiza la dependencia directa afectada:
+
+```bat
+pip install --upgrade requests
+```
+
+![pip install --upgrade requests — desinstala 2.31.0 e instala 2.34.2 exitosamente](<assets/pip install --upgrade requests.png>)
+
+`requests` pasa de `2.31.0` a `2.34.2`. Se vuelve a auditar:
+
+```bat
 pip-audit
 ```
 
-**Comparativa ANTES / DESPUÉS:**
+![pip-audit tras actualizar requests — baja a 12 vulnerabilidades: certifi y urllib3 siguen afectados](<assets/pip-audit part2 segunda vez despues de actualizar.png>)
 
-| Métrica              | ANTES (versiones vulnerables) | DESPUÉS (versiones actuales) |
-|----------------------|-------------------------------|------------------------------|
-| requests             | 2.6.0                         | 2.34.2                       |
-| urllib3              | 1.24.1                        | 2.7.0                        |
-| certifi              | 2017.7.27.1                   | 2026.7.22                    |
-| Vulnerabilidades     | 4                             | 0                            |
-| Estado del pipeline  | FAIL                          | PASS                         |
+#### El punto clave del laboratorio
 
-**¿Actualizar siempre soluciona el problema?**
+Tras actualizar `requests`, `pip-audit` baja de 15 a **12 vulnerabilidades**, pero **`certifi` y `urllib3` siguen apareciendo**. Cuando `pip` actualizó `requests`, revisó que `urllib3 2.0.6` satisface el rango `>=1.26,<3` que `requests` exige, por lo que no lo tocó.
 
-No necesariamente. Actualizar puede introducir:
-- Incompatibilidades de API (cambios breaking entre versiones mayores)
-- Nuevos bugs no detectados aún
-- Conflictos con otras dependencias que requieren versiones antiguas
-- Cambios de comportamiento que rompen tests existentes
+> **Actualizar una dependencia directa no garantiza que sus dependencias transitivas queden en versiones seguras.** Hay que actualizar explícitamente cada paquete vulnerable que reporte `pip-audit`.
+
+```bat
+pip install --upgrade certifi urllib3
+```
+
+![pip install --upgrade certifi urllib3 — desinstala certifi 2023.5.7 y urllib3 2.0.6, instala 2026.7.22 y 2.7.0](<assets/pipeline part5.png>)
+
+Con las transitivas ya corregidas, la auditoría final queda limpia:
+
+```bat
+pip-audit
+```
+
+![pip-audit final — No known vulnerabilities found](<assets/pip-audit final sin vulnerabilidades.png>)
+
+#### Antes / Después
+
+| Estado      | Paquetes vulnerables          | Vulnerabilidades |
+|-------------|-------------------------------|------------------|
+| Antes       | certifi, requests, urllib3    | 15               |
+| Intermedio  | certifi, urllib3              | 12               |
+| Después     | ninguno                       | 0                |
 
 ---
 
-### Parte IX — Conflicto de dependencias
+### 9. Extensión: pipeline de seguridad con Security Gate
 
-Escenario conceptual donde dos librerías requieren versiones incompatibles de una misma dependencia:
+Se implementó `security_pipeline.py` que automatiza el análisis y aplica una **puerta de seguridad**: ejecuta `pip list`, `pipdeptree` y `pip-audit`, guarda el reporte en `dependency-report.txt` y decide si el build puede continuar.
 
-```
-app.py
-  │
-  ├── Librería A
-  │      └── urllib3 >= 2.0
-  │
-  └── Librería B
-         └── urllib3 < 2.0
+```bat
+python security_pipeline.py
 ```
 
-```
-urllib3 >= 2.0
-urllib3 <  2.0
-─────────────
-   CONFLICTO — ninguna versión satisface ambas restricciones
-```
+![Pipeline — sección pip list con todos los paquetes instalados y sus versiones](<assets/pipeline part1.png>)
 
-El gestor de paquetes intentará resolver las restricciones, pero cuando son mutuamente excluyentes el resultado es un error de instalación o una instalación silenciosamente incorrecta. La solución pasa por fijar versiones compatibles o buscar alternativas a alguna de las librerías.
+![Pipeline — árbol pipdeptree primera parte: beautifulsoup4, pip_audit, requests y sus transitivas](<assets/pipeline part2.png>)
+
+![Pipeline — árbol pipdeptree segunda parte y cabecera de sección pip-audit](<assets/pipeline part3.png>)
+
+![Pipeline — resultado pip-audit con 12 vulnerabilidades en certifi y urllib3, y mensaje FAIL](<assets/pipeline part4.png>)
+
+La regla es simple: **si `pip-audit` encuentra vulnerabilidades, el pipeline se detiene con `[FAIL]`**; solo si la auditoría está limpia el proceso continúa. En la evidencia, el gate detecta las vulnerabilidades de `certifi` y `urllib3` y detiene la ejecución, dejando el reporte guardado en `dependency-report.txt`. Este esquema conecta el laboratorio directamente con prácticas de DevSecOps y CI/CD.
 
 ---
 
-### Parte X — Supply Chain (Cadena de suministro)
+### 10. Análisis de Supply Chain
+
+El ejercicio ilustra un problema central de la cadena de suministro de software: una aplicación con pocas dependencias directas termina arrastrando decenas de componentes de terceros. En este proyecto, dos librerías directas (`requests` y `beautifulsoup4`) trajeron consigo todo un subárbol de transitivas, y fueron precisamente esas transitivas (`certifi`, `urllib3`) las que concentraron la mayor parte de las vulnerabilidades.
 
 ```
               app.py
                  │
                  ▼
-             requests          ← 1 dependencia directa
+             requests          ← dependencia directa
                  │
        ┌─────────┴─────────┐
        ▼                   ▼
@@ -242,108 +330,38 @@ El gestor de paquetes intentará resolver las restricciones, pero cuando son mut
   vulnerabilidad potencial
 ```
 
-**Caso planteado:**
-
-Una aplicación tiene 2 dependencias directas (`requests`, `beautifulsoup4`), pero esas dependencias requieren otras 5 librerías adicionales. En proyectos reales con 15 dependencias directas, el árbol total puede superar los 80 paquetes de terceros.
-
-Cada uno de esos paquetes:
-- Tiene su propio historial de vulnerabilidades
-- Puede ser abandonado por su mantenedor
-- Puede ser comprometido (typosquatting, supply chain attack)
-- Puede cambiar de licencia
-
-Esto es precisamente el problema de la **cadena de suministro de software**: aceptamos código de cientos de terceros sin revisarlo directamente.
+La superficie de riesgo de una aplicación **no** se mide por lo que uno instaló a mano, sino por el conjunto completo de código de terceros que efectivamente se ejecuta.
 
 ---
 
-### Parte XII — Actividad final: "Detective de dependencias"
+### 11. Conclusiones
 
-**Escenario:** Un desarrollador afirma que ninguna de las librerías que él instaló directamente tiene vulnerabilidades. Se debe investigar si esa afirmación es suficiente para considerar segura la aplicación.
-
-**Comandos ejecutados:**
-
-```bash
-pip list
-pipdeptree
-pip-audit
-pip list --outdated
-```
-
-**Análisis:**
-
-1. **Dependencias directas:**
-   - `requests==2.6.0`
-   - `beautifulsoup4==4.15.0`
-
-2. **Dependencias transitivas:**
-   - De `requests`: `urllib3==1.24.1`, `certifi==2017.7.27.1`, `charset-normalizer`, `idna`
-   - De `beautifulsoup4`: `soupsieve`
-
-3. **Versiones instaladas:** Mezcla de versiones antiguas y actuales.
-
-4. **Vulnerabilidades detectadas:** 4 CVEs en 3 paquetes (`requests`, `urllib3`, `certifi`).
-
-5. **Dependencias desactualizadas:** `pip list --outdated` muestra que `requests`, `urllib3` y `certifi` tienen versiones más recientes disponibles.
-
-6. **Posibles conflictos:** Si se actualiza `urllib3` a la versión 2.x y existe alguna librería que requiere `urllib3 < 2.0`, se producirá un conflicto.
-
-7. **Riesgos para la aplicación:**
-   - La vulnerabilidad `PYSEC-2023-74` en `requests` puede filtrar credenciales del proxy en redirects automáticos.
-   - Las vulnerabilidades en `urllib3` permiten inyección de cabeceras y omisión de validación de certificados.
-   - El certificado CA comprometido en `certifi` puede permitir ataques MITM.
-
-**Conclusión:** La afirmación del desarrollador es **insuficiente**. Las vulnerabilidades en dependencias transitivas son igual de peligrosas que las de las directas, y la responsabilidad de remediarlas recae en el equipo que mantiene la aplicación.
-
----
-
-### Pipeline de seguridad
-
-Se implementa un script `security_pipeline.py` en la raíz del proyecto que automatiza el análisis y genera `dependency-report.txt`:
-
-```bash
-python security_pipeline.py
-```
-
-El pipeline sigue este flujo:
-
-```
-pip list
-    │
-    ▼
-pipdeptree
-    │
-    ▼
-pip-audit
-    │
-   / \
-  /   \
- ▼     ▼
-PASS  FAIL → exit code 1
-  │
-  ▼
-dependency-report.txt generado
-```
+1. **Directas vs. transitivas.** Una dependencia directa es la que el proyecto pide de forma explícita; una transitiva es la que arrastra otra dependencia. `pip freeze` muestra más paquetes que los `import` del código porque incluye todo el subárbol transitivo.
+2. **Una app puede ser vulnerable sin importar el paquete vulnerable.** Fue el caso de `urllib3`: la aplicación nunca lo importó, pero estaba expuesta a través de `requests`.
+3. **Actualizar la dependencia directa no basta.** Hay que remediar explícitamente cada paquete vulnerable, incluidas las transitivas.
+4. **Actualizar todo automáticamente no es una buena estrategia.** Puede romper compatibilidad; conviene hacerlo de forma dirigida y verificar el resultado.
+5. **Las dependencias son un riesgo de Supply Chain.** Introducen código de terceros que puede contener vulnerabilidades, comportamientos inesperados o restricciones de licencia, y su número real supera con creces al de las dependencias elegidas de forma directa.
 
 ---
 
 ### Preguntas de reflexión
 
-**Pregunta 1: ¿Cuál es la diferencia entre dependencia directa y transitiva?**
+**¿Cuál es la diferencia entre dependencia directa y transitiva?**
 
-Una **dependencia directa** es aquella que el desarrollador declara explícitamente en `requirements.txt` porque su código la importa (`requests`, `beautifulsoup4`). Una **dependencia transitiva** es aquella que la dependencia directa necesita para funcionar, pero que el desarrollador nunca instala ni importa manualmente (`urllib3`, `certifi`, `soupsieve`, etc.). Ambas forman parte del árbol de dependencias del proyecto y ambas representan riesgo de seguridad.
+Una **dependencia directa** es aquella que el desarrollador declara explícitamente en `requirements.txt` porque su código la importa (`requests`, `beautifulsoup4`). Una **dependencia transitiva** es aquella que la dependencia directa necesita para funcionar, pero que el desarrollador nunca instala ni importa manualmente (`urllib3`, `certifi`, `soupsieve`, etc.).
 
-**Pregunta 2: ¿Por qué `pip freeze` puede mostrar más paquetes de los que aparecen en nuestro código?**
+**¿Por qué `pip freeze` puede mostrar más paquetes de los que aparecen en nuestro código?**
 
-Porque `pip freeze` lista **todos** los paquetes instalados en el entorno virtual, incluyendo las dependencias transitivas. Cuando se instala `requests`, pip instala automáticamente `urllib3`, `certifi`, `idna` y `charset-normalizer` porque `requests` los necesita. Ninguno de esos aparece en el código fuente con un `import`, pero sí están en el entorno.
+Porque `pip freeze` lista **todos** los paquetes instalados en el entorno virtual, incluyendo las dependencias transitivas. Cuando se instala `requests`, pip instala automáticamente `urllib3`, `certifi`, `idna` y `charset-normalizer` porque `requests` los necesita.
 
-**Pregunta 3: ¿Una aplicación puede tener una vulnerabilidad aunque nuestro código no tenga ningún `import` de la librería vulnerable?**
+**¿Una aplicación puede tener una vulnerabilidad aunque nuestro código no tenga ningún `import` de la librería vulnerable?**
 
-Sí. Si `urllib3` tiene una vulnerabilidad y nuestra aplicación usa `requests`, cualquier llamada a `requests.get()` utiliza internamente `urllib3` para gestionar la conexión. El exploit puede alcanzar el código vulnerable a través de la cadena de llamadas, sin que nuestro código lo invoque directamente.
+Sí. Si `urllib3` tiene una vulnerabilidad y nuestra aplicación usa `requests`, cualquier llamada a `requests.get()` utiliza internamente `urllib3`. El exploit puede alcanzar el código vulnerable a través de la cadena de llamadas, sin que nuestro código lo invoque directamente.
 
-**Pregunta 4: ¿Actualizar todas las dependencias automáticamente es una buena estrategia?**
+**¿Actualizar todas las dependencias automáticamente es una buena estrategia?**
 
-No necesariamente. Una actualización automática puede romper la aplicación si hay cambios de API entre versiones (especialmente en saltos de versión mayor), introducir nuevos bugs aún no reportados, generar conflictos entre dependencias que requieren versiones específicas, o cambiar comportamientos en los que el código confía implícitamente. La estrategia correcta es evaluar cada actualización en un entorno de pruebas y ejecutar la suite de tests antes de llevarla a producción.
+No necesariamente. Una actualización automática puede romper la aplicación si hay cambios de API entre versiones, introducir nuevos bugs, generar conflictos entre dependencias, o cambiar comportamientos en los que el código confía implícitamente.
 
-**Pregunta 5: ¿Por qué las dependencias representan un riesgo para la Software Supply Chain?**
+**¿Por qué las dependencias representan un riesgo para la Software Supply Chain?**
 
-Porque introducen código de terceros que el equipo no controla ni revisa directamente. Cada dependencia puede contener vulnerabilidades conocidas o desconocidas, ser abandonada por su mantenedor (sin parches futuros), ser comprometida mediante un ataque al repositorio del paquete (supply chain attack), cambiar de licencia en una nueva versión, o ser suplantada por un paquete malicioso con nombre similar (typosquatting). El riesgo se multiplica con cada nivel de dependencias transitivas.
+Porque introducen código de terceros que el equipo no controla ni revisa directamente. Cada dependencia puede contener vulnerabilidades conocidas o desconocidas, ser abandonada por su mantenedor, ser comprometida mediante un ataque al repositorio del paquete, cambiar de licencia, o ser suplantada por un paquete malicioso con nombre similar (typosquatting).
